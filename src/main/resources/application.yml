@@ -1,0 +1,99 @@
+server:
+  port: 8081  # 이 서비스(order) 포트
+
+spring:
+  datasource:
+    url: jdbc:mysql://localhost:3307/orderdb?useSSL=false&serverTimezone=Asia/Seoul&characterEncoding=utf8
+    username: root
+    password: 1234
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+  cloud:
+    stream:
+      bindings:
+        order-out-0:
+          destination: order-created-scs
+          content-type: application/json
+#          producer:
+#            use-native-encoding: false
+      kafka:
+        binder:
+          brokers: ${kafka.bootstrap-servers} # 10.0.114.30:29092
+  kafka:
+    bootstrap-servers: ${kafka.bootstrap-servers}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      properties:
+        # 타입 헤더를 안 붙이고 싶으면 false (NOTI에서 default.type을 줄 거라면 false가 편함)
+        spring.json.add.type.headers: false
+        enable.idempotence: true # 멱등성 설정 (같은 메시지 중복 전송 방지)
+      acks: all
+
+
+kafka:
+  bootstrap-servers: 10.0.114.30:29092
+
+app:
+  item-base-url: http://localhost:8080  # 호출 대상(item) 서비스 베이스 URL
+
+resilience4j:
+  # ==== 서킷브레이커 설정 ====
+  circuitbreaker:
+    instances:
+      product:  # 인스턴스 이름(어노테이션 name="product"와 매칭)
+        slidingWindowType: COUNT_BASED     # COUNT_BASED(호출 횟수 기반) / TIME_BASED(시간 기반)
+        slidingWindowSize: 5              # 실패율을 계산할 창 크기(20회)
+        minimumNumberOfCalls: 5   # ← 최소 호출 수를 명시
+        failureRateThreshold: 50           # 실패율 임계값(%) → 50% 이상이면 OPEN
+        waitDurationInOpenState: 10s       # OPEN 상태 유지 시간(지나면 HALF_OPEN으로 전환)
+        permittedNumberOfCallsInHalfOpenState: 3  # HALF_OPEN에서 허용할 시도 수
+        # "실패로 간주할 예외" 목록
+        recordExceptions:
+          - java.io.IOException
+          - java.util.concurrent.TimeoutException
+          - io.netty.handler.timeout.ReadTimeoutException
+          - org.springframework.web.reactive.function.client.WebClientRequestException
+          - org.springframework.web.reactive.function.client.WebClientResponseException$InternalServerError
+        # "실패로 간주하지 않을(무시할) 예외" 목록
+        ignoreExceptions:
+          - org.springframework.web.reactive.function.client.WebClientResponseException$NotFound
+
+  # ==== 타임리미터(비동기 타임아웃) ====
+  timelimiter:
+    instances:
+      product:
+        timeoutDuration: 2s          # 2초 안에 완료 안 되면 TimeoutException 발생
+        cancelRunningFuture: true    # 타임아웃 시 하위 작업 취소 시도
+
+  # ==== 재시도 ====
+  retry:
+    instances:
+      product:
+        maxAttempts: 3               # 최대 3회 시도(원호출 + 2회 재시도)
+        waitDuration: 200ms          # 재시도 간 대기 시간
+        retryExceptions:
+          - java.io.IOException
+          - java.util.concurrent.TimeoutException
+          - io.netty.handler.timeout.ReadTimeoutException
+          - org.springframework.web.reactive.function.client.WebClientRequestException
+        ignoreExceptions:
+          - org.springframework.web.reactive.function.client.WebClientResponseException$BadRequest  # 400은 재시도 불필요
+
+logging:
+  level:
+    com.dean.study.flux.order: DEBUG
+    org.springframework.web.reactive.function.client: DEBUG  # WebClient 요청/응답 로그
+    io.github.resilience4j: DEBUG
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,circuitbreakerevents,bindings
+  endpoint:
+    health:
+      show-details: always
