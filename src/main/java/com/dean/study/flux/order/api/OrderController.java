@@ -13,6 +13,7 @@ import reactor.core.scheduler.Schedulers;
 
 import java.time.Instant;
 import java.util.Map;
+import java.util.UUID;
 import java.util.concurrent.ThreadLocalRandom;
 
 @RestController
@@ -31,7 +32,7 @@ public class OrderController {
         long oid = (orderId != null) ? orderId
                 : ThreadLocalRandom.current().nextLong(1_000_000);
 
-        OrderCreatedEvent evt = new OrderCreatedEvent(oid, itemId, "CREATED", Instant.now());
+        OrderCreatedEvent evt = new OrderCreatedEvent(oid, itemId, "CREATED", Instant.now(), UUID.randomUUID().toString());
 
         Mono<Void> pub = "kafka".equalsIgnoreCase(mode) ? lowLevelOrderPublisher.send(evt)
                 : Mono.fromCallable(() -> {
@@ -47,6 +48,12 @@ public class OrderController {
                 "tookMs", System.currentTimeMillis() - start,
                 "event", evt
         ));
+    }
+
+    @PostMapping("/bad/scs")
+    public Mono<Map<String, Object>> sendBadSCS(
+            @RequestParam(defaultValue = "order-out-0") String binding) {
+        return scsOrderPublisher.sendBadSCS(binding);
     }
 
 

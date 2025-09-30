@@ -5,6 +5,7 @@ import java.time.Instant;
 public record OrderCreatedEvent(Long orderId,
                                 Long itemId,
                                 String status,
-                                Instant ts) {
+                                Instant ts,
+                                String eventId) {
 
 }

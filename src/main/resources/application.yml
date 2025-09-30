@@ -22,6 +22,16 @@ spring:
       kafka:
         binder:
           brokers: ${kafka.bootstrap-servers} # 10.0.114.30:29092
+        bindings:
+          order-out-0:
+            producer:
+              configuration:
+                enable.idempotence: true   # 프로듀서 멱등성
+                acks: all                  # 리더+ISR까지 확인
+                delivery.timeout.ms: 120000
+                retries: 3
+                linger.ms: 5               # 묶음 효율(옵션)
+                batch.size: 32768          # 옵션
   kafka:
     bootstrap-servers: ${kafka.bootstrap-servers}
     producer:
